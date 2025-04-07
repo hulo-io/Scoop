@@ -1,2 +1,2 @@
-${#Requires -Version 5}
+// @hulo-build powershell@5
 Invoke-RestMethod "https://get.scoop.sh" | Invoke-Expression

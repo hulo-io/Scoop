@@ -1,4 +1,4 @@
-function Get-PESubsystem($filePath) {
+fn Get-PESubsystem($filePath) {
     try {
         $fileStream = [System.IO.FileStream]::new($filePath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read)
         $binaryReader = [System.IO.BinaryReader]::new($fileStream)
@@ -21,7 +21,7 @@ function Get-PESubsystem($filePath) {
     }
 }
 
-function Set-PESubsystem($filePath, $targetSubsystem) {
+fn Set-PESubsystem($filePath, $targetSubsystem) {
     try {
         $fileStream = [System.IO.FileStream]::new($filePath, [System.IO.FileMode]::Open, [System.IO.FileAccess]::ReadWrite)
         $binaryReader = [System.IO.BinaryReader]::new($fileStream)
@@ -46,24 +46,24 @@ function Set-PESubsystem($filePath, $targetSubsystem) {
     return $true
 }
 
-function Optimize-SecurityProtocol {
-    # .NET Framework 4.7+ has a default security protocol called 'SystemDefault',
-    # which allows the operating system to choose the best protocol to use.
-    # If SecurityProtocolType contains 'SystemDefault' (means .NET4.7+ detected)
-    # and the value of SecurityProtocol is 'SystemDefault', just do nothing on SecurityProtocol,
-    # 'SystemDefault' will use TLS 1.2 if the webrequest requires.
+fn Optimize-SecurityProtocol() {
+    // .NET Framework 4.7+ has a default security protocol called 'SystemDefault',
+    // which allows the operating system to choose the best protocol to use.
+    // If SecurityProtocolType contains 'SystemDefault' (means .NET4.7+ detected)
+    // and the value of SecurityProtocol is 'SystemDefault', just do nothing on SecurityProtocol,
+    // 'SystemDefault' will use TLS 1.2 if the webrequest requires.
     $isNewerNetFramework = ([System.Enum]::GetNames([System.Net.SecurityProtocolType]) -contains 'SystemDefault')
     $isSystemDefault = ([System.Net.ServicePointManager]::SecurityProtocol.Equals([System.Net.SecurityProtocolType]::SystemDefault))
 
-    # If not, change it to support TLS 1.2
+    // If not, change it to support TLS 1.2
     if (!($isNewerNetFramework -and $isSystemDefault)) {
-        # Set to TLS 1.2 (3072). Ssl3, TLS 1.0, and 1.1 have been deprecated,
-        # https://datatracker.ietf.org/doc/html/rfc8996
+        // Set to TLS 1.2 (3072). Ssl3, TLS 1.0, and 1.1 have been deprecated,
+        // https://datatracker.ietf.org/doc/html/rfc8996
         [System.Net.ServicePointManager]::SecurityProtocol = 3072
     }
 }
 
-function Get-Encoding($wc) {
+fn Get-Encoding($wc) {
     if ($null -ne $wc.ResponseHeaders -and $wc.ResponseHeaders['Content-Type'] -match 'charset=([^;]*)') {
         return [System.Text.Encoding]::GetEncoding($Matches[1])
     } else {
@@ -71,11 +71,11 @@ function Get-Encoding($wc) {
     }
 }
 
-function Get-UserAgent() {
+fn Get-UserAgent() {
     return "Scoop/1.0 (+http://scoop.sh/) PowerShell/$($PSVersionTable.PSVersion.Major).$($PSVersionTable.PSVersion.Minor) (Windows NT $([System.Environment]::OSVersion.Version.Major).$([System.Environment]::OSVersion.Version.Minor); $(if(${env:ProgramFiles(Arm)}){'ARM64; '}elseif($env:PROCESSOR_ARCHITECTURE -eq 'AMD64'){'Win64; x64; '})$(if($env:PROCESSOR_ARCHITEW6432 -in 'AMD64','ARM64'){'WOW64; '})$PSEdition)"
 }
 
-function Show-DeprecatedWarning {
+fn Show-DeprecatedWarning() {
     <#
     .SYNOPSIS
         Print deprecated warning for functions, which will be deleted in near future.
@@ -91,14 +91,14 @@ function Show-DeprecatedWarning {
     Write-Host "      -> $($Invocation.PSCommandPath):$($Invocation.ScriptLineNumber):$($Invocation.OffsetInLine)" -ForegroundColor DarkGray
 }
 
-function load_cfg($file) {
+fn load_cfg($file) {
     if(!(Test-Path $file)) {
         return $null
     }
 
     try {
-        # ReadAllLines will detect the encoding of the file automatically
-        # Ref: https://docs.microsoft.com/en-us/dotnet/api/system.io.file.readalllines?view=netframework-4.5
+        // ReadAllLines will detect the encoding of the file automatically
+        // Ref: https://docs.microsoft.com/en-us/dotnet/api/system.io.file.readalllines?view=netframework-4.5
         $content = [System.IO.File]::ReadAllLines($file)
         return ($content | ConvertFrom-Json -ErrorAction Stop)
     } catch {
@@ -106,7 +106,7 @@ function load_cfg($file) {
     }
 }
 
-function get_config($name, $default) {
+fn get_config($name, $default) {
     $name = $name.ToLowerInvariant()
     if($null -eq $scoopConfig.$name -and $null -ne $default) {
         return $default
@@ -114,7 +114,7 @@ function get_config($name, $default) {
     return $scoopConfig.$name
 }
 
-function set_config {
+fn set_config() {
     Param (
         [ValidateNotNullOrEmpty()]
         $name,
@@ -132,7 +132,7 @@ function set_config {
         $value = [System.Convert]::ToBoolean($value)
     }
 
-    # Initialize config's change
+    // Initialize config's change
     Complete-ConfigChange -Name $name -Value $value
 
     if ($null -eq $scoopConfig.$name) {
@@ -145,12 +145,12 @@ function set_config {
         $scoopConfig.PSObject.Properties.Remove($name)
     }
 
-    # Save config with UTF8NoBOM encoding
+    // Save config with UTF8NoBOM encoding
     ConvertTo-Json $scoopConfig | Out-UTF8File -FilePath $configFile
     return $scoopConfig
 }
 
-function Complete-ConfigChange {
+fn Complete-ConfigChange() {
     [CmdletBinding()]
     param (
         [Parameter(Mandatory, Position = 0)]
@@ -228,8 +228,8 @@ function Complete-ConfigChange {
     }
 }
 
-function setup_proxy() {
-    # note: '@' and ':' in password must be escaped, e.g. 'p@ssword' -> p\@ssword'
+fn setup_proxy() {
+    // note: '@' and ':' in password must be escaped, e.g. 'p@ssword' -> p\@ssword'
     $proxy = get_config PROXY
     if(!$proxy) {
         return
@@ -257,7 +257,7 @@ function setup_proxy() {
     }
 }
 
-function Invoke-Git {
+fn Invoke-Git() {
     [CmdletBinding()]
     [OutputType([String])]
     param(
@@ -301,7 +301,7 @@ function Invoke-Git {
     return & $git @ArgumentList
 }
 
-function Invoke-GitLog {
+fn Invoke-GitLog() {
     [CmdletBinding()]
     Param (
         [Parameter(Mandatory, ValueFromPipeline)]

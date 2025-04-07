@@ -1,4 +1,4 @@
-<#
+${<#
 .SYNOPSIS
     Check if ALL urls inside manifest have correct hashes.
 .PARAMETER App
@@ -38,33 +38,35 @@ param(
     [Switch] $SkipCorrect,
     [Alias('k')]
     [Switch] $UseCache
-)
+)}
 
-. "$PSScriptRoot\..\lib\core.ps1"
-. "$PSScriptRoot\..\lib\manifest.ps1"
-. "$PSScriptRoot\..\lib\buckets.ps1"
-. "$PSScriptRoot\..\lib\autoupdate.ps1"
-. "$PSScriptRoot\..\lib\json.ps1"
-. "$PSScriptRoot\..\lib\versions.ps1"
-. "$PSScriptRoot\..\lib\install.ps1"
+extern App: str, Dir: str, Update: bool, ForceUpdate: bool, SkipCorrect: bool, UseCache: bool
+
+import "../lib/core.hl"
+import "../lib/manifest.hl"
+import "../lib/buckets.hl"
+import "../lib/autoupdate.hl"
+import "../lib/json.hl"
+import "../lib/versions.hl"
+import "../lib/install.hl"
 
 $Dir = Convert-Path $Dir
-if ($ForceUpdate) { $Update = $true }
-# Cleanup
-if (!$UseCache) { Remove-Item "$cachedir\*HASH_CHECK*" -Force }
+if $ForceUpdate { $Update = true }
+// Cleanup
+if !$UseCache { Remove-Item "$cachedir\*HASH_CHECK*" -Force }
 
-function err ([String] $name, [String[]] $message) {
+fn err ([String] $name, [String[]] $message) {
     Write-Host "$name`: " -ForegroundColor Red -NoNewline
     Write-Host ($message -join "`r`n") -ForegroundColor Red
 }
 
-$MANIFESTS = @()
+$MANIFESTS := []
 foreach ($single in Get-ChildItem $Dir -Filter "$App.json" -Recurse) {
     $name = $single.BaseName
     $file = $single.FullName
     $manifest = parse_json $file
 
-    # Skip nighly manifests, since their hash validation is skipped
+    // Skip nighly manifests, since their hash validation is skipped
     if ($manifest.version -eq 'nightly') { continue }
 
     $urls = @()
@@ -74,7 +76,7 @@ foreach ($single in Get-ChildItem $Dir -Filter "$App.json" -Recurse) {
         $manifest.url | ForEach-Object { $urls += $_ }
         $manifest.hash | ForEach-Object { $hashes += $_ }
     } elseif ($manifest.architecture) {
-        # First handle 64bit
+        // First handle 64bit
         script:url $manifest '64bit' | ForEach-Object { $urls += $_ }
         hash $manifest '64bit' | ForEach-Object { $hashes += $_ }
         script:url $manifest '32bit' | ForEach-Object { $urls += $_ }
@@ -86,29 +88,29 @@ foreach ($single in Get-ChildItem $Dir -Filter "$App.json" -Recurse) {
         continue
     }
 
-    # Number of URLS and Hashes is different
+    // Number of URLS and Hashes is different
     if ($urls.Length -ne $hashes.Length) {
         err $name 'URLS and hashes count mismatch.'
         continue
     }
 
-    $MANIFESTS += @{
-        app      = $name
-        file     = $file
-        manifest = $manifest
-        urls     = $urls
-        hashes   = $hashes
-    }
+    $MANIFESTS.add({
+        app: $name
+        file: $file
+        manifest: $manifest
+        urls: $urls
+        hashes: $hashes
+    })
 }
 
-# clear any existing events
+// clear any existing events
 Get-Event | ForEach-Object { Remove-Event $_.SourceIdentifier }
 
 foreach ($current in $MANIFESTS) {
     $count = 0
-    # Array of indexes mismatched hashes.
+    // Array of indexes mismatched hashes.
     $mismatched = @()
-    # Array of computed hashes
+    // Array of computed hashes
     $actuals = @()
 
     $current.urls | ForEach-Object {
@@ -124,7 +126,7 @@ foreach ($current in $MANIFESTS) {
         $to_check = cache_path $current.app $version $_
         $actual_hash = (Get-FileHash -Path $to_check -Algorithm $algorithm).Hash.ToLower()
 
-        # Append type of algorithm to both expected and actual if it's not sha256
+        // Append type of algorithm to both expected and actual if it's not sha256
         if ($algorithm -ne 'sha256') {
             $actual_hash = "$algorithm`:$actual_hash"
             $expected = "$algorithm`:$expected"
@@ -161,12 +163,12 @@ foreach ($current in $MANIFESTS) {
             $current.manifest.hash = $actuals
         } else {
             $platforms = ($current.manifest.architecture | Get-Member -MemberType NoteProperty).Name
-            # Defaults to zero, don't know, which architecture is available
+            // Defaults to zero, don't know, which architecture is available
             $64bit_count = 0
             $32bit_count = 0
             $arm64_count = 0
 
-            # 64bit is get, donwloaded and added first
+            // 64bit is get, donwloaded and added first
             if ($platforms.Contains('64bit')) {
                 $64bit_count = $current.manifest.architecture.'64bit'.hash.Count
                 $current.manifest.architecture.'64bit'.hash = $actuals[0..($64bit_count - 1)]

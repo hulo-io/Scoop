@@ -76,7 +76,7 @@ if ($App -ne '*' -and (Test-Path $App -PathType Leaf)) {
 }
 
 if ((!$Push -and !$Request) -or $Help) {
-    Write-Host @'
+    echo """
 Usage: auto-pr.ps1 [OPTION]
 
 Mandatory options:
@@ -87,7 +87,7 @@ Optional options:
   -u,  -upstream                   upstream repository with target branch
   -o,  -originbranch               origin (local) branch name
   -h,  -help
-'@
+"""
     exit 0
 }
 
@@ -103,7 +103,7 @@ if ($IsLinux -or $IsMacOS) {
     }
 }
 
-function execute($cmd) {
+fn execute($cmd) {
     Write-Host $cmd -ForegroundColor Green
     $output = Invoke-Command ([scriptblock]::Create($cmd))
 
@@ -114,7 +114,7 @@ function execute($cmd) {
     return $output
 }
 
-function pull_requests($json, [String] $app, [String] $upstream, [String] $manifest, [String] $commitMessage) {
+fn pull_requests($json, [String] $app, [String] $upstream, [String] $manifest, [String] $commitMessage) {
     $version = $json.version
     $homepage = $json.homepage
     $branch = "manifest/$app-$version"
@@ -198,7 +198,7 @@ hub diff --name-only | ForEach-Object {
         Write-Host "Creating update $app ($version) ..." -ForegroundColor DarkCyan
         execute "hub add $manifest"
 
-        # detect if file was staged, because it's not when only LF or CRLF have changed
+        // detect if file was staged, because it's not when only LF or CRLF have changed
         $status = execute 'hub status --porcelain -uno'
         $status = $status | Where-Object { $_ -match "M\s{2}.*$app.json" }
         if ($status -and $status.StartsWith('M  ') -and $status.EndsWith("$app.json")) {
