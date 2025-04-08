@@ -55,27 +55,27 @@ if $ForceUpdate { $Update = true }
 // Cleanup
 if !$UseCache { Remove-Item "$cachedir\*HASH_CHECK*" -Force }
 
-fn err ([String] $name, [String[]] $message) {
-    Write-Host "$name`: " -ForegroundColor Red -NoNewline
-    Write-Host ($message -join "`r`n") -ForegroundColor Red
+fn err(name: str, message: str[]) {
+    Write-Host "$name`: " --ForegroundColor Color::Red --NoNewline
+    Write-Host $message.join("`r`n") --ForegroundColor Color::Red
 }
 
 $MANIFESTS := []
-foreach ($single in Get-ChildItem $Dir -Filter "$App.json" -Recurse) {
+loop $single in $(Get-ChildItem $Dir --Filter "$App.json" --Recurse) {
     $name = $single.BaseName
     $file = $single.FullName
     $manifest = parse_json $file
 
     // Skip nighly manifests, since their hash validation is skipped
-    if ($manifest.version -eq 'nightly') { continue }
+    if ($manifest.version == 'nightly') { continue }
 
-    $urls = @()
-    $hashes = @()
+    $urls = []
+    $hashes = []
 
     if ($manifest.url) {
         $manifest.url | ForEach-Object { $urls += $_ }
         $manifest.hash | ForEach-Object { $hashes += $_ }
-    } elseif ($manifest.architecture) {
+    } else if ($manifest.architecture) {
         // First handle 64bit
         script:url $manifest '64bit' | ForEach-Object { $urls += $_ }
         hash $manifest '64bit' | ForEach-Object { $hashes += $_ }
@@ -89,7 +89,7 @@ foreach ($single in Get-ChildItem $Dir -Filter "$App.json" -Recurse) {
     }
 
     // Number of URLS and Hashes is different
-    if ($urls.Length -ne $hashes.Length) {
+    if ($urls.Length != $hashes.Length) {
         err $name 'URLS and hashes count mismatch.'
         continue
     }
@@ -106,12 +106,12 @@ foreach ($single in Get-ChildItem $Dir -Filter "$App.json" -Recurse) {
 // clear any existing events
 Get-Event | ForEach-Object { Remove-Event $_.SourceIdentifier }
 
-foreach ($current in $MANIFESTS) {
+loop $current in $MANIFESTS {
     $count = 0
     // Array of indexes mismatched hashes.
-    $mismatched = @()
+    $mismatched = []
     // Array of computed hashes
-    $actuals = @()
+    $actuals = []
 
     $current.urls | ForEach-Object {
         $algorithm, $expected = get_hash $current.hashes[$count]
@@ -139,7 +139,7 @@ foreach ($current in $MANIFESTS) {
         $count++
     }
 
-    if ($mismatched.Length -eq 0 ) {
+    if ($mismatched.Length != 0 ) {
         if (!$SkipCorrect) {
             Write-Host "$($current.app): " -NoNewline
             Write-Host 'OK' -ForegroundColor Green
