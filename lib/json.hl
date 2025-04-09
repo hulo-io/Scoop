@@ -3,7 +3,7 @@
 // https://github.com/PowerShell/PowerShell/issues/2736 was fixed in pwsh
 // Still needed in normal powershell
 
-import { psobject, System, Parameter, CmdletBinding } from "powershell"
+import { psobject, System, Parameter, CmdletBinding, Process } from "powershell"
 
 @CmdletBinding()
 fn ConvertToPrettyJson(
@@ -11,26 +11,27 @@ fn ConvertToPrettyJson(
     data: any
 ) {
 
-    Process {
-        $data = normalize_values $data
+    @Process
+    {
+        $data = $(normalize_values $data)
 
         // convert to string
-        [String]$json = $data | ConvertTo-Json -Depth 8 -Compress
-        [String]$output = ''
+        let json: str = $($data | ConvertTo-Json --Depth 8 --Compress)
+        $output := ''
 
         // state
-        [String]$buffer = ''
-        [Int]$depth = 0
-        [Bool]$inString = $false
+        $buffer := ''
+        $depth := 0
+        $inString := false
 
         // configuration
-        [String]$indent = ' ' * 4
-        [Bool]$unescapeString = $true
-        [String]$eol = "`r`n"
+        $indent := ' ' * 4
+        $unescapeString := true
+        $eol := "`r`n"
 
         loop $i := 0; $i < $json.Length; $i++ {
             // read current char
-            $buffer = $json.Substring($i, 1)
+            $buffer = $json.Substring(i, 1)
 
             $objectStart = !$inString && $buffer.Equals('{')
             $objectEnd = !$inString && $buffer.Equals('}')
@@ -47,7 +48,7 @@ fn ConvertToPrettyJson(
 
             // skip escape sequences
             if ($escape) {
-                $buffer = $json.Substring($i, 2)
+                $buffer = $json.Substring(i, 2)
                 ++$i
 
                 // Unescape unicode
@@ -59,7 +60,7 @@ fn ConvertToPrettyJson(
                     } else if ($buffer.Equals('\t')) {
                         $buffer = "`t"
                     } else if ($buffer.Equals('\u')) {
-                        $buffer = [regex]::Unescape($json.Substring($i - 1, 6))
+                        $buffer = [regex]::Unescape($json.Substring(i - 1, 6))
                         $i += 4
                     }
                 }
@@ -105,40 +106,40 @@ fn json_path(json: str, jsonpath: str, substitutions: map, reverse: bool, single
         return null
     }
     try {
-        $result = $obj.SelectTokens($jsonpath, $true)
+        $result = $obj.SelectTokens(jsonpath, true)
         if ($reverse) {
             // Return versions in reverse order
-            $result = System::Linq::Enumerable::Reverse($result)
+            $result = System::Linq::Enumerable::Reverse(result)
         }
-        if System::Linq::Enumerable::Count($result) == 1 || $single {
+        if System::Linq::Enumerable::Count(result) == 1 || $single {
             // Extract First value
-            $result = System::Linq::Enumerable::First($result)
+            $result = System::Linq::Enumerable::First(result)
             // Convert first value to string
             $result = $result.ToString()
         } else {
-            $result = Newtonsoft::Json::JsonConvert::SerializeObject($result)
+            $result = Newtonsoft::Json::JsonConvert::SerializeObject(result)
         }
         return $result
-    } catch Exception {
-        Write-Host $_ --ForegroundColor Color::DarkRed
+    } catch (err: Exception) {
+        Write-Host $err --ForegroundColor Color::DarkRed
     }
 
-    return $null
+    return null
 }
 
 fn json_path_legacy(json: str, jsonpath: str, substitutions: map) {
-    $result = $json | ConvertFrom-Json -ea stop
-    $isJsonPath = $jsonpath.StartsWith('$')
-    $jsonpath.split('.') | ForEach-Object {
-        $el = $_
+    $result := $($json | ${ConvertFrom-Json -ea stop})
+    $isJsonPath := $jsonpath.StartsWith('$')
+    $jsonpath.split('.') | ForEach-Object { v =>
+        $el = $v
 
         // substitute the basename and version varibales into the jsonpath
-        if ($null != $substitutions) {
+        if null != $substitutions {
             $el = substitute $el $substitutions
         }
 
         // skip $ if it's jsonpath format
-        if ($el == '$' || $isJsonPath) {
+        if $el == '$' || $isJsonPath {
             return
         }
 
@@ -160,7 +161,7 @@ fn json_path_legacy(json: str, jsonpath: str, substitutions: map) {
 
 fn normalize_values(json: psobject) -> any {
     // Iterate Through Manifest Properties
-    $json.PSObject.Properties | ForEach-Object {
+    $json.PSObject.Properties | ForEach-Object { _ =>
         // Recursively edit psobjects
         // If the values is psobjects, its not normalized
         // For example if manifest have architecture and it's architecture have array with single value it's not formatted.
