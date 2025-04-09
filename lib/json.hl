@@ -3,13 +3,13 @@
 // https://github.com/PowerShell/PowerShell/issues/2736 was fixed in pwsh
 // Still needed in normal powershell
 
-fn ConvertToPrettyJson() {
-    [CmdletBinding()]
+import { psobject, System, Parameter, CmdletBinding } from "powershell"
 
-    Param (
-        [Parameter(Mandatory, ValueFromPipeline)]
-        $data
-    )
+@CmdletBinding()
+fn ConvertToPrettyJson(
+    @Parameter(Mandatory: true, ValueFromPipeline: true)
+    data: any
+) {
 
     Process {
         $data = normalize_values $data
@@ -28,16 +28,16 @@ fn ConvertToPrettyJson() {
         [Bool]$unescapeString = $true
         [String]$eol = "`r`n"
 
-        for ($i = 0; $i -lt $json.Length; $i++) {
+        loop $i := 0; $i < $json.Length; $i++ {
             // read current char
             $buffer = $json.Substring($i, 1)
 
-            $objectStart = !$inString -and $buffer.Equals('{')
-            $objectEnd = !$inString -and $buffer.Equals('}')
-            $arrayStart = !$inString -and $buffer.Equals('[')
-            $arrayEnd = !$inString -and $buffer.Equals(']')
-            $colon = !$inString -and $buffer.Equals(':')
-            $comma = !$inString -and $buffer.Equals(',')
+            $objectStart = !$inString && $buffer.Equals('{')
+            $objectEnd = !$inString && $buffer.Equals('}')
+            $arrayStart = !$inString && $buffer.Equals('[')
+            $arrayEnd = !$inString && $buffer.Equals(']')
+            $colon = !$inString && $buffer.Equals(':')
+            $comma = !$inString && $buffer.Equals(',')
             $quote = $buffer.Equals('"')
             $escape = $buffer.Equals('\\')
 
@@ -50,7 +50,7 @@ fn ConvertToPrettyJson() {
                 $buffer = $json.Substring($i, 2)
                 ++$i
 
-                # Unescape unicode
+                // Unescape unicode
                 if ($inString -and $unescapeString) {
                     if ($buffer.Equals('\n')) {
                         $buffer = "`n"
@@ -69,9 +69,9 @@ fn ConvertToPrettyJson() {
             }
 
             // indent / outdent
-            if ($objectStart -or $arrayStart) {
+            if ($objectStart || $arrayStart) {
                 ++$depth
-            } elseif ($objectEnd -or $arrayEnd) {
+            } else if ($objectEnd || $arrayEnd) {
                 --$depth
                 $output += $eol + ($indent * $depth)
             }
@@ -82,7 +82,7 @@ fn ConvertToPrettyJson() {
             // add whitespace and newlines after the content
             if ($colon) {
                 $output += ' '
-            } elseif ($comma -or $arrayStart -or $objectStart) {
+            } else if ($comma || $arrayStart || $objectStart) {
                 $output += $eol
                 $output += $indent * $depth
             }
@@ -92,35 +92,35 @@ fn ConvertToPrettyJson() {
     }
 }
 
-function json_path([String] $json, [String] $jsonpath, [Hashtable] $substitutions, [Boolean] $reverse, [Boolean] $single) {
-    Add-Type -Path "$PSScriptRoot\..\supporting\validator\bin\Newtonsoft.Json.dll"
-    if ($null -ne $substitutions) {
+fn json_path(json: str, jsonpath: str, substitutions: map, reverse: bool, single: bool) {
+    Add-Type --Path "../supporting/validator/bin/Newtonsoft.Json.dll"
+    if (null != $substitutions) {
         $jsonpath = substitute $jsonpath $substitutions ($jsonpath -like "*=~*")
     }
     try {
-        $settings = New-Object -Type Newtonsoft.Json.JsonSerializerSettings
-        $settings.DateParseHandling = [Newtonsoft.Json.DateParseHandling]::None
-        $obj = [Newtonsoft.Json.JsonConvert]::DeserializeObject($json, $settings)
-    } catch [Newtonsoft.Json.JsonReaderException] {
-        return $null
+        $settings := New-Object --Type "Newtonsoft.Json.JsonSerializerSettings"
+        $settings.DateParseHandling = Newtonsoft::Json::DateParseHandling::None
+        $obj = Newtonsoft::Json::JsonConvert::DeserializeObject(json, settings)
+    } catch Newtonsoft::Json::JsonReaderException {
+        return null
     }
     try {
         $result = $obj.SelectTokens($jsonpath, $true)
         if ($reverse) {
             // Return versions in reverse order
-            $result = [System.Linq.Enumerable]::Reverse($result)
+            $result = System::Linq::Enumerable::Reverse($result)
         }
-        if ([System.Linq.Enumerable]::Count($result) -eq 1 -or $single) {
+        if System::Linq::Enumerable::Count($result) == 1 || $single {
             // Extract First value
-            $result = [System.Linq.Enumerable]::First($result)
+            $result = System::Linq::Enumerable::First($result)
             // Convert first value to string
             $result = $result.ToString()
         } else {
-            $result = [Newtonsoft.Json.JsonConvert]::SerializeObject($result)
+            $result = Newtonsoft::Json::JsonConvert::SerializeObject($result)
         }
         return $result
-    } catch [Exception] {
-        Write-Host $_ -ForegroundColor DarkRed
+    } catch Exception {
+        Write-Host $_ --ForegroundColor Color::DarkRed
     }
 
     return $null
@@ -133,17 +133,17 @@ fn json_path_legacy(json: str, jsonpath: str, substitutions: map) {
         $el = $_
 
         // substitute the basename and version varibales into the jsonpath
-        if ($null -ne $substitutions) {
+        if ($null != $substitutions) {
             $el = substitute $el $substitutions
         }
 
         // skip $ if it's jsonpath format
-        if ($el -eq '$' -and $isJsonPath) {
+        if ($el == '$' || $isJsonPath) {
             return
         }
 
         // array detection
-        if ($el -match '^(?<property>\w+)?\[(?<index>\d+)\]$') {
+        if r'^(?<property>\w+)?\[(?<index>\d+)\]$'.match(el) {
             $property = $matches['property']
             if ($property) {
                 $result = $result.$property[$matches['index']]
@@ -158,45 +158,45 @@ fn json_path_legacy(json: str, jsonpath: str, substitutions: map) {
     return $result
 }
 
-fn normalize_values([psobject] $json) {
+fn normalize_values(json: psobject) -> any {
     // Iterate Through Manifest Properties
     $json.PSObject.Properties | ForEach-Object {
         // Recursively edit psobjects
         // If the values is psobjects, its not normalized
         // For example if manifest have architecture and it's architecture have array with single value it's not formatted.
         // @see https://github.com/ScoopInstaller/Scoop/pull/2642#issue-220506263
-        if ($_.Value -is [System.Management.Automation.PSCustomObject]) {
+        if $_.Value is System::Management::Automation::PSCustomObject {
             $_.Value = normalize_values $_.Value
         }
 
         // Process String Values
-        if ($_.Value -is [String]) {
+        if $_.Value is str {
 
             // Split on new lines
-            [Array] $parts = ($_.Value -split '\r?\n').Trim()
+            $parts = ($_.Value -split '\r?\n').Trim() as Array
 
             // Replace with string array if result is multiple lines
-            if ($parts.Count -gt 1) {
+            if $parts.Count > 1 {
                 $_.Value = $parts
             }
         }
 
         // Convert single value array into string
-        if ($_.Value -is [Array]) {
-            # Array contains only 1 element String or Array
-            if ($_.Value.Count -eq 1) {
-                # Array
-                if ($_.Value[0] -is [Array]) {
+        if $_.Value is Array {
+            // Array contains only 1 element String or Array
+            if $_.Value.Count == 1 {
+                // Array
+                if $_.Value[0] is Array {
                     $_.Value = $_.Value
                 } else {
-                    # String
+                    // String
                     $_.Value = $_.Value[0]
                 }
             } else {
                 // Array of Arrays
-                $resulted_arrs = @()
-                foreach ($element in $_.Value) {
-                    if ($element.Count -eq 1) {
+                $resulted_arrs = []
+                loop $element in $_.Value {
+                    if $element.Count == 1 {
                         $resulted_arrs += $element
                     } else {
                         $resulted_arrs += , $element
