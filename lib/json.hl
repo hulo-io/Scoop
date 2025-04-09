@@ -1,9 +1,9 @@
-# Convert objects to pretty json
-# Only needed until PowerShell ConvertTo-Json will be improved https://github.com/PowerShell/PowerShell/issues/2736
-# https://github.com/PowerShell/PowerShell/issues/2736 was fixed in pwsh
-# Still needed in normal powershell
+// Convert objects to pretty json
+// Only needed until PowerShell ConvertTo-Json will be improved https://github.com/PowerShell/PowerShell/issues/2736
+// https://github.com/PowerShell/PowerShell/issues/2736 was fixed in pwsh
+// Still needed in normal powershell
 
-function ConvertToPrettyJson {
+fn ConvertToPrettyJson() {
     [CmdletBinding()]
 
     Param (
@@ -14,22 +14,22 @@ function ConvertToPrettyJson {
     Process {
         $data = normalize_values $data
 
-        # convert to string
+        // convert to string
         [String]$json = $data | ConvertTo-Json -Depth 8 -Compress
         [String]$output = ''
 
-        # state
+        // state
         [String]$buffer = ''
         [Int]$depth = 0
         [Bool]$inString = $false
 
-        # configuration
+        // configuration
         [String]$indent = ' ' * 4
         [Bool]$unescapeString = $true
         [String]$eol = "`r`n"
 
         for ($i = 0; $i -lt $json.Length; $i++) {
-            # read current char
+            // read current char
             $buffer = $json.Substring($i, 1)
 
             $objectStart = !$inString -and $buffer.Equals('{')
@@ -39,13 +39,13 @@ function ConvertToPrettyJson {
             $colon = !$inString -and $buffer.Equals(':')
             $comma = !$inString -and $buffer.Equals(',')
             $quote = $buffer.Equals('"')
-            $escape = $buffer.Equals('\')
+            $escape = $buffer.Equals('\\')
 
-            if ($quote) {
+            if $quote {
                 $inString = !$inString
             }
 
-            # skip escape sequences
+            // skip escape sequences
             if ($escape) {
                 $buffer = $json.Substring($i, 2)
                 ++$i
@@ -54,11 +54,11 @@ function ConvertToPrettyJson {
                 if ($inString -and $unescapeString) {
                     if ($buffer.Equals('\n')) {
                         $buffer = "`n"
-                    } elseif ($buffer.Equals('\r')) {
+                    } else if ($buffer.Equals('\r')) {
                         $buffer = "`r"
-                    } elseif ($buffer.Equals('\t')) {
+                    } else if ($buffer.Equals('\t')) {
                         $buffer = "`t"
-                    } elseif ($buffer.Equals('\u')) {
+                    } else if ($buffer.Equals('\u')) {
                         $buffer = [regex]::Unescape($json.Substring($i - 1, 6))
                         $i += 4
                     }
@@ -68,7 +68,7 @@ function ConvertToPrettyJson {
                 continue
             }
 
-            # indent / outdent
+            // indent / outdent
             if ($objectStart -or $arrayStart) {
                 ++$depth
             } elseif ($objectEnd -or $arrayEnd) {
@@ -76,10 +76,10 @@ function ConvertToPrettyJson {
                 $output += $eol + ($indent * $depth)
             }
 
-            # add content
+            // add content
             $output += $buffer
 
-            # add whitespace and newlines after the content
+            // add whitespace and newlines after the content
             if ($colon) {
                 $output += ' '
             } elseif ($comma -or $arrayStart -or $objectStart) {
@@ -107,13 +107,13 @@ function json_path([String] $json, [String] $jsonpath, [Hashtable] $substitution
     try {
         $result = $obj.SelectTokens($jsonpath, $true)
         if ($reverse) {
-            # Return versions in reverse order
+            // Return versions in reverse order
             $result = [System.Linq.Enumerable]::Reverse($result)
         }
         if ([System.Linq.Enumerable]::Count($result) -eq 1 -or $single) {
-            # Extract First value
+            // Extract First value
             $result = [System.Linq.Enumerable]::First($result)
-            # Convert first value to string
+            // Convert first value to string
             $result = $result.ToString()
         } else {
             $result = [Newtonsoft.Json.JsonConvert]::SerializeObject($result)
@@ -126,23 +126,23 @@ function json_path([String] $json, [String] $jsonpath, [Hashtable] $substitution
     return $null
 }
 
-function json_path_legacy([String] $json, [String] $jsonpath, [Hashtable] $substitutions) {
+fn json_path_legacy(json: str, jsonpath: str, substitutions: map) {
     $result = $json | ConvertFrom-Json -ea stop
     $isJsonPath = $jsonpath.StartsWith('$')
     $jsonpath.split('.') | ForEach-Object {
         $el = $_
 
-        # substitute the basename and version varibales into the jsonpath
+        // substitute the basename and version varibales into the jsonpath
         if ($null -ne $substitutions) {
             $el = substitute $el $substitutions
         }
 
-        # skip $ if it's jsonpath format
+        // skip $ if it's jsonpath format
         if ($el -eq '$' -and $isJsonPath) {
             return
         }
 
-        # array detection
+        // array detection
         if ($el -match '^(?<property>\w+)?\[(?<index>\d+)\]$') {
             $property = $matches['property']
             if ($property) {
@@ -158,30 +158,30 @@ function json_path_legacy([String] $json, [String] $jsonpath, [Hashtable] $subst
     return $result
 }
 
-function normalize_values([psobject] $json) {
-    # Iterate Through Manifest Properties
+fn normalize_values([psobject] $json) {
+    // Iterate Through Manifest Properties
     $json.PSObject.Properties | ForEach-Object {
-        # Recursively edit psobjects
-        # If the values is psobjects, its not normalized
-        # For example if manifest have architecture and it's architecture have array with single value it's not formatted.
-        # @see https://github.com/ScoopInstaller/Scoop/pull/2642#issue-220506263
+        // Recursively edit psobjects
+        // If the values is psobjects, its not normalized
+        // For example if manifest have architecture and it's architecture have array with single value it's not formatted.
+        // @see https://github.com/ScoopInstaller/Scoop/pull/2642#issue-220506263
         if ($_.Value -is [System.Management.Automation.PSCustomObject]) {
             $_.Value = normalize_values $_.Value
         }
 
-        # Process String Values
+        // Process String Values
         if ($_.Value -is [String]) {
 
-            # Split on new lines
+            // Split on new lines
             [Array] $parts = ($_.Value -split '\r?\n').Trim()
 
-            # Replace with string array if result is multiple lines
+            // Replace with string array if result is multiple lines
             if ($parts.Count -gt 1) {
                 $_.Value = $parts
             }
         }
 
-        # Convert single value array into string
+        // Convert single value array into string
         if ($_.Value -is [Array]) {
             # Array contains only 1 element String or Array
             if ($_.Value.Count -eq 1) {
@@ -193,7 +193,7 @@ function normalize_values([psobject] $json) {
                     $_.Value = $_.Value[0]
                 }
             } else {
-                # Array of Arrays
+                // Array of Arrays
                 $resulted_arrs = @()
                 foreach ($element in $_.Value) {
                     if ($element.Count -eq 1) {
@@ -207,7 +207,7 @@ function normalize_values([psobject] $json) {
             }
         }
 
-        # Process other values as needed...
+        // Process other values as needed...
     }
 
     return $json
