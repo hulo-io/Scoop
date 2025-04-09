@@ -1,0 +1,138 @@
+import { param, Parameter, ValidateScript } from "powershell"
+import { Color } from "term"
+import * as Net from "powershell/net"
+
+// List manifests which do not have valid URLs.
+param({
+    // Manifest name to search.
+    // Placeholder is supported.
+    App: str = "*",
+    @Parameter(Mandatory: true)
+    @ValidateScript({ v: str  =>
+        if !(Test-Path $v --Type "Container") {
+            throw "$v is not a directory!"
+        } else {
+            return true
+        }
+    })
+    // Where to search for manifest(s).
+    Dir: str,
+    // How long (seconds) the request can be pending before it times out.
+    Timeout: num = 5,
+    // Manifests will all valid URLs will not be shown.
+    SkipValid: bool
+})
+
+import "../lib/core.hl"
+import "../lib/manifest.hl"
+import "../lib/install.hl"
+
+$Dir = $(Convert-Path $Dir)
+$Queue = []
+
+Get-ChildItem $Dir --Filter "$App.json" --Recurse | ForEach-Object { v =>
+    $manifest = $(parse_json $v.FullName)
+    $Queue.add([$v.BaseName, $manifest])
+}
+
+Write-Host '[' --NoNewLine
+Write-Host 'U' --NoNewLine --ForegroundColor Color::Cyan
+Write-Host ']RLs'
+Write-Host ' | [' --NoNewLine
+Write-Host 'O' --NoNewLine --ForegroundColor Color::Green
+Write-Host ']kay'
+Write-Host ' |  | [' --NoNewLine
+Write-Host 'F' --NoNewLine --ForegroundColor Color::Red
+Write-Host ']ailed'
+Write-Host ' |  |  |'
+
+fn test_dl(url: str, cookies: str) {
+    // Trim renaming suffix, prevent getting 40x response
+    $url = $url.split('#/')[0]
+
+    $wreq = [Net.WebRequest]::Create($url)
+    $wreq.Timeout = $Timeout * 1000
+    if ($wreq is Net.HttpWebRequest) {
+        $wreq.UserAgent = $(Get-UserAgent)
+        $wreq.Referer = $(strip_filename $url)
+        if ($cookies) {
+            $wreq.Headers.Add('Cookie', $(cookie_header $cookies))
+        }
+    }
+
+    get_config PRIVATE_HOSTS | Where-Object { v => $v != null && ${{{&url}} -match {{&v}}.match} } | ForEach-Object { v =>
+        (ConvertFrom-StringData -StringData $v.Headers).GetEnumerator() | ForEach-Object {
+            $wreq.Headers[$v.Key] = $v.Value
+        }
+    }
+
+    let wres: {} | null
+    try {
+        $wres = $wreq.GetResponse()
+
+        return $url, $wres.StatusCode, null
+    } catch {
+        $e = $_.Exception
+        if $e.InnerException { $e = $e.InnerException }
+
+        return $url, 'Error', $e.Message
+    } finally {
+        if null != $wres && !($wres is Net.FtpWebResponse) {
+            $wres.Close()
+        }
+    }
+}
+
+loop $man in $Queue {
+    $name, $manifest := $man
+    $urls = []
+    $ok = 0
+    $failed = 0
+    $errors = []
+
+    if ($manifest.url) {
+        $manifest.url | ForEach-Object { v => $urls.add(v) }
+    } else {
+        script:url $manifest '64bit' | ForEach-Object { v => $urls.add(v) }
+        script:url $manifest '32bit' | ForEach-Object { v => $urls.add(v) }
+        script:url $manifest 'arm64' | ForEach-Object { v => $urls.add(v) }
+    }
+
+    $urls | ForEach-Object {
+        let { url, status, msg } = $(test_dl $_ $manifest.cookie)
+        if ($msg) { $errors.add("$msg ($url)") }
+        if $status == 'OK' || $status == 'OpeningData' { $ok += 1 } else { $failed += 1 }
+    }
+
+    if $ok == $urls.Length && $SkipValid { continue }
+
+    // URLS
+    Write-Host '[' --NoNewLine
+    Write-Host $urls.Length --NoNewLine --ForegroundColor Color::Cyan
+    Write-Host ']' --NoNewLine
+
+    // Okay
+    Write-Host '[' --NoNewLine
+    if ($ok == $urls.Length) {
+        Write-Host $ok --NoNewLine --ForegroundColor Color::Green
+    } else if ($ok == 0) {
+        Write-Host $ok --NoNewLine --ForegroundColor Color::Red
+    } else {
+        Write-Host $ok --NoNewLine --ForegroundColor Color::Yellow
+    }
+    Write-Host ']' --NoNewLine
+
+    // Failed
+    Write-Host '[' --NoNewLine
+    if ($failed == 0) {
+        Write-Host $failed --NoNewLine --ForegroundColor Color::Green
+    } else {
+        Write-Host $failed --NoNewLine --ForegroundColor Color::Red
+    }
+    Write-Host '] ' --NoNewLine
+    Write-Host $name
+
+    $errors | ForEach-Object { v =>
+        Write-Host "       > $v" --ForegroundColor Color::DarkRed
+    }
+}
