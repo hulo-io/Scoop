@@ -33,14 +33,14 @@ fn ConvertToPrettyJson(
             // read current char
             $buffer = $json.Substring(i, 1)
 
-            $objectStart = !$inString && $buffer.Equals('{')
-            $objectEnd = !$inString && $buffer.Equals('}')
-            $arrayStart = !$inString && $buffer.Equals('[')
-            $arrayEnd = !$inString && $buffer.Equals(']')
-            $colon = !$inString && $buffer.Equals(':')
-            $comma = !$inString && $buffer.Equals(',')
-            $quote = $buffer.Equals('"')
-            $escape = $buffer.Equals('\\')
+            $objectStart = !$inString && $buffer == '{'
+            $objectEnd = !$inString && $buffer == '}'
+            $arrayStart = !$inString && $buffer == '['
+            $arrayEnd = !$inString && $buffer == ']'
+            $colon = !$inString && $buffer == ':'
+            $comma = !$inString && $buffer == ','
+            $quote = $buffer == '"'
+            $escape = $buffer == '\\'
 
             if $quote {
                 $inString = !$inString
@@ -52,14 +52,14 @@ fn ConvertToPrettyJson(
                 ++$i
 
                 // Unescape unicode
-                if ($inString -and $unescapeString) {
-                    if ($buffer.Equals('\n')) {
+                if $inString && $unescapeString {
+                    if $buffer == '\n' {
                         $buffer = "`n"
-                    } else if ($buffer.Equals('\r')) {
+                    } else if $buffer == '\r' {
                         $buffer = "`r"
-                    } else if ($buffer.Equals('\t')) {
+                    } else if $buffer == '\t' {
                         $buffer = "`t"
-                    } else if ($buffer.Equals('\u')) {
+                    } else if $buffer == '\u' {
                         $buffer = [regex]::Unescape($json.Substring(i - 1, 6))
                         $i += 4
                     }
@@ -70,9 +70,9 @@ fn ConvertToPrettyJson(
             }
 
             // indent / outdent
-            if ($objectStart || $arrayStart) {
+            if $objectStart || $arrayStart {
                 ++$depth
-            } else if ($objectEnd || $arrayEnd) {
+            } else if $objectEnd || $arrayEnd {
                 --$depth
                 $output += $eol + ($indent * $depth)
             }
@@ -81,9 +81,9 @@ fn ConvertToPrettyJson(
             $output += $buffer
 
             // add whitespace and newlines after the content
-            if ($colon) {
+            if $colon {
                 $output += ' '
-            } else if ($comma || $arrayStart || $objectStart) {
+            } else if $comma || $arrayStart || $objectStart {
                 $output += $eol
                 $output += $indent * $depth
             }
@@ -96,10 +96,10 @@ fn ConvertToPrettyJson(
 fn json_path(json: str, jsonpath: str, substitutions: map, reverse: bool, single: bool) {
     Add-Type --Path "../supporting/validator/bin/Newtonsoft.Json.dll"
     if (null != $substitutions) {
-        $jsonpath = substitute $jsonpath $substitutions ($jsonpath -like "*=~*")
+        $jsonpath = $(substitute $jsonpath $substitutions ($jsonpath -like "*=~*"))
     }
     try {
-        $settings := New-Object --Type "Newtonsoft.Json.JsonSerializerSettings"
+        $settings := $(New-Object --Type "Newtonsoft.Json.JsonSerializerSettings")
         $settings.DateParseHandling = Newtonsoft::Json::DateParseHandling::None
         $obj = Newtonsoft::Json::JsonConvert::DeserializeObject(json, settings)
     } catch Newtonsoft::Json::JsonReaderException {
@@ -157,6 +157,12 @@ fn json_path_legacy(json: str, jsonpath: str, substitutions: map) {
         $result = $result.$el
     }
     return $result
+}
+
+type psobject = {
+    PSObject: {
+        Properties: any[]
+    }
 }
 
 fn normalize_values(json: psobject) -> any {
